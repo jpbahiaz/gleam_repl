@@ -2,3 +2,6 @@
 *.ez
 /build
 erl_crash.dump
+src/repl_session.gleam
+/build/repl_package_interface.json
+.cache
