@@ -509,8 +509,8 @@ pub fn binding_updates(
 
 pub fn polish_compiler_error(message: String, scratch_path: String) -> String {
   message
-  |> string.replace(scratch_path, "<repl>")
   |> rewrite_scratch_paths
+  |> string.replace(scratch_path, "<repl>")
   |> string.replace("dev/repl.gleam", "<repl>")
 }
 

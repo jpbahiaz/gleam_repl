@@ -42,13 +42,17 @@ fn run_items(
 ) -> #(HarnessState, Result(List(Outcome), EvalError)) {
   let generation = state.generation + 1
   let #(plan, next_id) = codegen.generate(state, items)
+  let path = host.scratch_path(project, generation)
   case compile.compile(project, generation, plan.source) {
-    Error(message) -> #(state, Error(CompileError(message)))
+    Error(message) -> #(
+      state,
+      Error(compile_failure(message, plan.dirty, path, state.seen_warnings)),
+    )
     Ok(#(package, build_output)) ->
       case hotload.reload(project, generation) {
         Error(message) -> {
           host.delete_scratch(project, generation)
-          #(state, Error(CompileError(message)))
+          #(state, Error(CompileError(warnings: [], message:)))
         }
         Ok(_) ->
           case apply_calls(generation, state.runtime_store, plan.calls) {
@@ -58,7 +62,6 @@ fn run_items(
             }
             Ok(#(store, values)) -> {
               host.delete_scratch(project, state.generation)
-              let path = host.scratch_path(project, generation)
               let parsed = warnings.parse(build_output)
               let shown =
                 warnings.select(parsed, plan.dirty, state.seen_warnings, path)
@@ -106,6 +109,34 @@ fn commit(
     generation:,
     seen_warnings: state.seen_warnings,
   )
+}
+
+fn compile_failure(
+  raw: String,
+  dirty: List(#(Int, Int)),
+  path: String,
+  seen: List(String),
+) -> EvalError {
+  let report = warnings.parse_build(raw)
+  let shown = warnings.select(report.warnings, dirty, seen, path)
+  let errs = warnings.select_errors(report.errors, dirty, path)
+  let warning_texts =
+    list.map(shown, fn(warning) { warnings.polish(warning.text, path) })
+  let message = case errs {
+    [] -> fallback_error(raw, path)
+    _ ->
+      errs
+      |> list.map(fn(error) { warnings.polish(error.text, path) })
+      |> string.join("\n\n")
+  }
+  CompileError(warnings: warning_texts, message:)
+}
+
+fn fallback_error(raw: String, path: String) -> String {
+  case string.trim(warnings.polish(raw, path)) {
+    "" -> "Compile failed"
+    message -> message
+  }
 }
 
 fn warning_outcomes(

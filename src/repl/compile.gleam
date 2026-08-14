@@ -38,7 +38,7 @@ pub fn compile(
   {
     Error(message) -> {
       host.delete_scratch(project, generation)
-      Error(codegen.polish_compiler_error(message, path))
+      Error(message)
     }
     Ok(output) ->
       case export_interface(project) {

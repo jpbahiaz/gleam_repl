@@ -182,6 +182,10 @@ fn display_type(gleam_type: String) -> String {
 
 fn print_result(result: Result(List(Outcome), EvalError), color: Bool) -> Nil {
   case result {
+    Error(CompileError(warnings, message)) -> {
+      list.each(warnings, fn(text) { io.println(style.warning(text, color)) })
+      io.println_error(style.error(message, color))
+    }
     Error(error) -> io.println_error(style.error(format_error(error), color))
     Ok(outcomes) ->
       list.each(outcomes, fn(outcome) {
@@ -204,7 +208,7 @@ fn format_error(error: EvalError) -> String {
   case error {
     ParseError(message) -> message
     Incomplete -> "Incomplete input"
-    CompileError(message) -> message
+    CompileError(_, message) -> message
     RuntimeError(message) -> message
     ProjectError(message) -> message
   }

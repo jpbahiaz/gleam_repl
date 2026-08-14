@@ -15,7 +15,7 @@ import repl/eval
 import repl/history
 import repl/hotload
 import repl/source
-import repl/state.{type Project, ImportSpec, Project, Warned}
+import repl/state.{type Project, CompileError, ImportSpec, Project, Warned}
 import repl/types
 import repl/warnings
 import simplifile
@@ -388,6 +388,46 @@ pub fn warning_select_shows_new_fingerprint_test() {
     warnings.select([warning], [#(20, 24)], [], "src/repl_session_3.gleam")
 }
 
+pub fn parse_build_splits_warnings_and_errors_test() {
+  let output =
+    "warning: Redundant comparison\n"
+    <> "  ┌─ src/repl_session_2.gleam:12:3\n"
+    <> "12 │   \"Kiss\" == \"kiss\"\n"
+    <> "\n"
+    <> "error: Unknown module\n"
+    <> "  ┌─ src/repl_session_3.gleam:16:3\n"
+    <> "16 │   io.println(90)\n"
+    <> "\n"
+    <> "No module has been found with the name io.\n"
+  let report = warnings.parse_build(output)
+  let assert [warning] = report.warnings
+  let assert [error] = report.errors
+  assert string_contains(warning.text, "Redundant comparison")
+  assert string_contains(error.text, "Unknown module")
+  assert string_contains(error.text, "io.println")
+}
+
+pub fn select_errors_keeps_dirty_drops_old_entry_test() {
+  let report =
+    warnings.parse_build(
+      "error: Unknown variable\n"
+      <> "  ┌─ src/repl_session_3.gleam:4:3\n"
+      <> "4 │   leftover\n"
+      <> "\n"
+      <> "error: Unknown module\n"
+      <> "  ┌─ src/repl_session_3.gleam:16:3\n"
+      <> "16 │   io.println(90)\n",
+    )
+  let shown =
+    warnings.select_errors(
+      report.errors,
+      [#(14, 18)],
+      "src/repl_session_3.gleam",
+    )
+  let assert [error] = shown
+  assert string_contains(error.text, "Unknown module")
+}
+
 pub fn warning_select_drops_other_generation_test() {
   let assert [stale, current] =
     warnings.parse(
@@ -435,6 +475,22 @@ pub fn eval_reshows_warning_on_redefine_test() {
   assert !string_contains(text, "repl_session")
 }
 
+pub fn eval_failed_compile_hides_old_warning_test() {
+  let host = warning_host()
+  let state = state.new_state()
+  let #(state, first) = eval.eval_snippet(host, state, "\"Kiss\" == \"kiss\"")
+  let assert Ok(first_outcomes) = first
+  assert list.any(first_outcomes, is_warned)
+  let #(_state, failed) = eval.eval_snippet(host, state, "io.println(90)")
+  let assert Error(CompileError(warnings, message)) = failed
+  assert warnings == []
+  assert string_contains(message, "Unknown module")
+  assert string_contains(message, "<repl>")
+  assert !string_contains(message, "Kiss")
+  assert !string_contains(message, "Redundant")
+  assert !string_contains(message, "repl_session")
+}
+
 pub fn warning_polish_rewrites_scratch_path_test() {
   let text = "warning: Redundant comparison\n  ┌─ src/repl_session_2.gleam:8:3"
   let polished = warnings.polish(text, "src/repl_session_2.gleam")
@@ -451,6 +507,16 @@ pub fn warning_polish_rewrites_absolute_and_stale_paths_test() {
   assert string_contains(polished, "┌─ <repl>:4:12")
   assert !string_contains(polished, "repl_session")
   assert !string_contains(polished, "/home/")
+}
+
+pub fn warning_polish_does_not_leave_directory_prefix_test() {
+  let text =
+    "error: Unknown variable\n"
+    <> "  ┌─ /home/elias/Downloads/chess/chess_server/src/repl_session_2.gleam:12:3"
+  let polished = warnings.polish(text, "src/repl_session_2.gleam")
+  assert string_contains(polished, "┌─ <repl>:12:3")
+  assert !string_contains(polished, "chess_server")
+  assert !string_contains(polished, "repl_session")
 }
 
 pub fn import_merge_test() {

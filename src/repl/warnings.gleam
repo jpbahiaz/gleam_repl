@@ -12,15 +12,38 @@ pub type Warning {
   Warning(text: String, spans: List(Span), fingerprint: String)
 }
 
+pub type BuildReport {
+  BuildReport(warnings: List(Warning), errors: List(Warning))
+}
+
 pub fn parse(output: String) -> List(Warning) {
-  output
-  |> strip_ansi
-  |> string.replace("\r\n", "\n")
-  |> string.replace("\r", "\n")
-  |> string.split("\n")
-  |> split_blocks([])
-  |> list.reverse
-  |> list.filter_map(from_block)
+  parse_build(output).warnings
+}
+
+pub fn parse_build(output: String) -> BuildReport {
+  let blocks =
+    output
+    |> strip_ansi
+    |> string.replace("\r\n", "\n")
+    |> string.replace("\r", "\n")
+    |> string.split("\n")
+    |> split_blocks([])
+    |> list.reverse
+  let warnings =
+    list.filter_map(blocks, fn(block) {
+      case block {
+        #(WarningBlock, lines) -> from_block(lines)
+        #(ErrorBlock, _) -> Error(Nil)
+      }
+    })
+  let errors =
+    list.filter_map(blocks, fn(block) {
+      case block {
+        #(ErrorBlock, lines) -> from_block(lines)
+        #(WarningBlock, _) -> Error(Nil)
+      }
+    })
+  BuildReport(warnings:, errors:)
 }
 
 pub fn select(
@@ -38,6 +61,26 @@ pub fn select(
   })
 }
 
+pub fn select_errors(
+  errors: List(Warning),
+  dirty: List(#(Int, Int)),
+  scratch_path: String,
+) -> List(Warning) {
+  let current = state.last_segment(scratch_path)
+  let related =
+    list.filter(errors, fn(error) {
+      belongs(error.spans, current)
+      && {
+        in_dirty(error.spans, dirty, current)
+        || !on_current_scratch(error.spans, current)
+      }
+    })
+  case related {
+    [] -> list.filter(errors, fn(error) { belongs(error.spans, current) })
+    _ -> related
+  }
+}
+
 pub fn fingerprints(warnings: List(Warning)) -> List(String) {
   list.map(warnings, fn(warning) { warning.fingerprint })
 }
@@ -46,27 +89,47 @@ pub fn polish(text: String, scratch_path: String) -> String {
   codegen.polish_compiler_error(text, scratch_path)
 }
 
+type BlockKind {
+  WarningBlock
+  ErrorBlock
+}
+
 fn split_blocks(
   lines: List(String),
-  acc: List(List(String)),
-) -> List(List(String)) {
+  acc: List(#(BlockKind, List(String))),
+) -> List(#(BlockKind, List(String))) {
   case lines {
     [] -> acc
     [line, ..rest] ->
-      case is_warning_start(line) {
-        True -> split_blocks(rest, [[line], ..acc])
-        False ->
+      case block_kind(line) {
+        Ok(kind) -> split_blocks(rest, [#(kind, [line]), ..acc])
+        Error(_) ->
           case acc {
-            [current, ..blocks] ->
-              split_blocks(rest, [list.append(current, [line]), ..blocks])
+            [#(kind, current), ..blocks] ->
+              split_blocks(rest, [
+                #(kind, list.append(current, [line])),
+                ..blocks
+              ])
             [] -> split_blocks(rest, acc)
           }
       }
   }
 }
 
-fn is_warning_start(line: String) -> Bool {
-  string.starts_with(string.trim_start(line), "warning:")
+fn block_kind(line: String) -> Result(BlockKind, Nil) {
+  let trimmed = string.trim_start(line)
+  case string.starts_with(trimmed, "warning:") {
+    True -> Ok(WarningBlock)
+    False ->
+      case string.starts_with(trimmed, "error:") {
+        True -> Ok(ErrorBlock)
+        False -> Error(Nil)
+      }
+  }
+}
+
+fn on_current_scratch(spans: List(Span), current: String) -> Bool {
+  list.any(spans, fn(span) { state.last_segment(span.file) == current })
 }
 
 fn from_block(lines: List(String)) -> Result(Warning, Nil) {

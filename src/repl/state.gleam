@@ -55,7 +55,7 @@ pub type Outcome {
 pub type EvalError {
   ParseError(message: String)
   Incomplete
-  CompileError(message: String)
+  CompileError(warnings: List(String), message: String)
   RuntimeError(message: String)
   ProjectError(message: String)
 }
