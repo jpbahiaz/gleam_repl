@@ -11,6 +11,7 @@ import repl/classify.{
 import repl/codegen.{type Call, type Plan}
 import repl/compile
 import repl/hotload
+import repl/project as host
 import repl/state.{
   type BindingKind, type EvalError, type HarnessState, type ImportSpec,
   type Outcome, type Project, CompileError, Defined, Definition, HarnessState,
@@ -37,25 +38,26 @@ fn run_items(
   state: HarnessState,
   items: List(Item),
 ) -> #(HarnessState, Result(List(Outcome), EvalError)) {
-  let previous = Ok(state.module_source)
+  let generation = state.generation + 1
   let #(plan, next_id) = codegen.generate(state, items)
-  case compile.compile(project, plan.source) {
+  case compile.compile(project, generation, plan.source) {
     Error(message) -> #(state, Error(CompileError(message)))
     Ok(package) ->
-      case hotload.reload(project) {
+      case hotload.reload(project, generation) {
         Error(message) -> {
-          compile.restore(project, previous)
+          host.delete_scratch(project, generation)
           #(state, Error(CompileError(message)))
         }
         Ok(_) ->
-          case apply_calls(state.runtime_store, plan.calls) {
+          case apply_calls(generation, state.runtime_store, plan.calls) {
             Error(message) -> {
-              compile.restore(project, previous)
+              host.delete_scratch(project, generation)
               #(state, Error(RuntimeError(message)))
             }
             Ok(#(store, values)) -> {
+              host.delete_scratch(project, state.generation)
               let state =
-                commit(state, plan, items, next_id, store)
+                commit(state, plan, items, next_id, store, generation)
                 |> refresh_types(package, plan.calls)
               let outcomes = make_outcomes(items, plan.calls, values, state)
               #(state, Ok(outcomes))
@@ -71,6 +73,7 @@ fn commit(
   items: List(Item),
   next_id: Int,
   store: dict.Dict(String, Dynamic),
+  generation: Int,
 ) -> HarnessState {
   let table =
     list.fold(
@@ -85,29 +88,32 @@ fn commit(
     runtime_store: store,
     imports: plan.imports,
     next_entry_id: next_id,
+    generation:,
   )
 }
 
 fn apply_calls(
+  generation: Int,
   store: dict.Dict(String, Dynamic),
   calls: List(Call),
 ) -> Result(#(dict.Dict(String, Dynamic), List(#(Call, Dynamic))), String) {
   list.try_fold(calls, #(store, []), fn(acc, call) {
     let #(store, done) = acc
-    use #(store_as, value) <- result.try(run_call(store, call))
+    use #(store_as, value) <- result.try(run_call(generation, store, call))
     let store = dict.insert(store, store_as, value)
     Ok(#(store, list.append(done, [#(call, value)])))
   })
 }
 
 fn run_call(
+  generation: Int,
   store: dict.Dict(String, Dynamic),
   call: Call,
 ) -> Result(#(String, Dynamic), String) {
   case call {
     codegen.ApplyFn(entry_fn:, arg_fns:, store_as:, ..) -> {
       use args <- result.try(resolve(store, arg_fns))
-      use value <- result.try(hotload.apply(entry_fn, args))
+      use value <- result.try(hotload.apply(generation, entry_fn, args))
       Ok(#(store_as, value))
     }
     codegen.Project(from:, index:, store_as:, ..) -> {
@@ -201,7 +207,7 @@ fn refresh_types(
   package: Package,
   calls: List(Call),
 ) -> HarnessState {
-  let scratch = state.scratch_module_name
+  let scratch = state.module_name(state.generation)
   case dict.get(package.modules, scratch) {
     Error(_) -> state
     Ok(module) -> {

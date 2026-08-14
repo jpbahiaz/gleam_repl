@@ -69,7 +69,12 @@ fn qualify_name(
   scratch_module: String,
   imports: List(ImportSpec),
 ) -> #(String, List(ImportSpec)) {
-  case module == "gleam" || module == scratch_module || module == "" {
+  case
+    module == "gleam"
+    || module == ""
+    || module == scratch_module
+    || state.is_scratch_module(module)
+  {
     True -> #(name, [])
     False ->
       case find_import(imports, module) {

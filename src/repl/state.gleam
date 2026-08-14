@@ -5,9 +5,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 
-pub const scratch_module_name = "repl_session"
-
-pub const scratch_relpath = "src/repl_session.gleam"
+pub const scratch_prefix = "repl_session"
 
 pub const empty_scratch = "//// REPL scratch — generated, do not edit\n"
 
@@ -30,13 +28,7 @@ pub type ImportSpec {
 }
 
 pub type Project {
-  Project(
-    name: String,
-    root: String,
-    scratch_path: String,
-    beam_path: String,
-    interface_path: String,
-  )
+  Project(name: String, root: String, interface_path: String)
 }
 
 pub type HarnessState {
@@ -47,6 +39,7 @@ pub type HarnessState {
     runtime_store: Dict(String, Dynamic),
     imports: List(ImportSpec),
     next_entry_id: Int,
+    generation: Int,
   )
 }
 
@@ -73,11 +66,24 @@ pub fn new_state() -> HarnessState {
     runtime_store: dict.new(),
     imports: [],
     next_entry_id: 1,
+    generation: 0,
   )
 }
 
 pub fn entry_name(id: Int) -> String {
   "entry_" <> int.to_string(id)
+}
+
+pub fn module_name(generation: Int) -> String {
+  scratch_prefix <> "_" <> int.to_string(generation)
+}
+
+pub fn is_scratch_module(module: String) -> Bool {
+  string.starts_with(module, scratch_prefix)
+}
+
+pub fn is_scratch_filename(name: String) -> Bool {
+  string.starts_with(name, scratch_prefix) && string.ends_with(name, ".gleam")
 }
 
 pub fn import_alias(spec: ImportSpec) -> String {

@@ -1,3 +1,4 @@
+import gleam/list
 import gleam/result
 import gleam/string
 import repl/state.{type Project, Project}
@@ -23,13 +24,54 @@ pub fn discover(root: String) -> Result(Project, String) {
   Ok(Project(
     name:,
     root:,
-    scratch_path: join(root, state.scratch_relpath),
-    beam_path: join(
-      root,
-      "build/dev/erlang/" <> name <> "/ebin/repl_session.beam",
-    ),
     interface_path: join(root, "build/repl_package_interface.json"),
   ))
+}
+
+pub fn scratch_relpath(generation: Int) -> String {
+  "src/" <> state.module_name(generation) <> ".gleam"
+}
+
+pub fn scratch_path(project: Project, generation: Int) -> String {
+  join(project.root, scratch_relpath(generation))
+}
+
+pub fn beam_path(project: Project, generation: Int) -> String {
+  join(
+    project.root,
+    "build/dev/erlang/"
+      <> project.name
+      <> "/ebin/"
+      <> state.module_name(generation)
+      <> ".beam",
+  )
+}
+
+pub fn clear_scratch_files(project: Project) -> Nil {
+  let src = join(project.root, "src")
+  case simplifile.read_directory(src) {
+    Error(_) -> Nil
+    Ok(names) ->
+      list.each(names, fn(name) {
+        case state.is_scratch_filename(name) {
+          True -> {
+            let _ = simplifile.delete(join(src, name))
+            Nil
+          }
+          False -> Nil
+        }
+      })
+  }
+}
+
+pub fn delete_scratch(project: Project, generation: Int) -> Nil {
+  case generation > 0 {
+    False -> Nil
+    True -> {
+      let _ = simplifile.delete(scratch_path(project, generation))
+      Nil
+    }
+  }
 }
 
 pub fn join(left: String, right: String) -> String {

@@ -452,8 +452,11 @@ pub fn binding_updates(
 }
 
 pub fn polish_compiler_error(message: String, scratch_path: String) -> String {
+  let file = state.last_segment(scratch_path)
   message
   |> string.replace(scratch_path, "<repl>")
+  |> string.replace("src/" <> file, "<repl>")
+  |> string.replace(file, "<repl>")
   |> string.replace("src/repl_session.gleam", "<repl>")
   |> string.replace("dev/repl.gleam", "<repl>")
 }

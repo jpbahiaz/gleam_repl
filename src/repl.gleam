@@ -10,7 +10,6 @@ import repl/state.{
   Defined, Definition, Imported, Incomplete, NoOutcome, ParseError, Printed,
   ProjectError, RuntimeError, Value,
 }
-import simplifile
 
 pub fn main() -> Nil {
   case project.discover(".") {
@@ -19,7 +18,7 @@ pub fn main() -> Nil {
       exit(1)
     }
     Ok(host) -> {
-      let _ = simplifile.delete(host.scratch_path)
+      project.clear_scratch_files(host)
       banner()
       loop(host, state.new_state(), "")
     }
@@ -40,6 +39,7 @@ fn loop(host: Project, state: HarnessState, buffer: String) -> Nil {
   case get_line(prompt) {
     Eof -> {
       io.println("")
+      project.clear_scratch_files(host)
       Nil
     }
     Read(raw) -> {
@@ -76,13 +76,16 @@ fn handle_command(
   cmd: command.Command,
 ) -> AfterCommand {
   case cmd {
-    command.Quit -> Stop
+    command.Quit -> {
+      project.clear_scratch_files(host)
+      Stop
+    }
     command.Help -> {
       io.println(command.help_text)
       Continue(state)
     }
     command.Reset -> {
-      let _ = simplifile.delete(host.scratch_path)
+      project.clear_scratch_files(host)
       io.println("REPL state cleared.")
       Continue(state.new_state())
     }

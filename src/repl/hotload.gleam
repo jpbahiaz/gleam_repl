@@ -2,25 +2,31 @@ import gleam/dynamic.{type Dynamic}
 import gleam/erlang/atom.{type Atom}
 import gleam/result
 import gleam/string
+import repl/project as host
 import repl/state.{type Project}
 import simplifile
 
-pub fn reload(project: Project) -> Result(Nil, String) {
+pub fn reload(project: Project, generation: Int) -> Result(Nil, String) {
+  let path = host.beam_path(project, generation)
   use bits <- result.try(
-    simplifile.read_bits(project.beam_path)
+    simplifile.read_bits(path)
     |> result.map_error(fn(e) {
-      "Could not read " <> project.beam_path <> ": " <> string.inspect(e)
+      "Could not read " <> path <> ": " <> string.inspect(e)
     }),
   )
-  load_binary(atom.create(state.scratch_module_name), project.beam_path, bits)
+  load_binary(atom.create(state.module_name(generation)), path, bits)
   |> result.map_error(fn(reason) {
     "Hot-load failed: " <> string.inspect(reason)
   })
 }
 
-pub fn apply(function: String, args: List(Dynamic)) -> Result(Dynamic, String) {
+pub fn apply(
+  generation: Int,
+  function: String,
+  args: List(Dynamic),
+) -> Result(Dynamic, String) {
   safe_apply(
-    atom.create(state.scratch_module_name),
+    atom.create(state.module_name(generation)),
     atom.create(function),
     args,
   )

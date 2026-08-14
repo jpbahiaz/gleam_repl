@@ -36,11 +36,11 @@ gleam run -m repl
 ```
 
 Run that from the **host project root** (the directory with `gleam.toml`). The
-scratch module is written to `src/repl_session.gleam` in that project so you can
+scratch module is written to `src/repl_session_N.gleam` in that project so you can
 `import` your own modules. Add this to the host `.gitignore`:
 
 ```
-src/repl_session.gleam
+src/repl_session*.gleam
 ```
 
 The host must compile to Erlang (`gleam build --target erlang`). JS-only
@@ -63,11 +63,13 @@ pasted at once commit atomically — all land or none do.
 
 1. [glance](https://hex.pm/packages/glance) classifies the snippet (import, `let`,
    expression, `fn` / `type` / `const`).
-2. The harness writes a candidate `src/repl_session.gleam`.
+2. The harness writes a candidate `src/repl_session_N.gleam` (new module name
+   per successful entry).
 3. `gleam build` is the compile gate. Failure prints the compiler error and
-   rolls the file back; state is unchanged.
+   deletes the candidate; state is unchanged.
 4. `gleam export package-interface` supplies inferred types for later entries.
-5. `code:load_binary` loads the new `.beam` into this node.
+5. `code:load_binary` loads that generation. Previous generations stay loaded
+   so earlier closures and processes keep working.
 6. Value entries are called once via `erlang:apply`. The result is cached as a
    live BEAM term (so `Pid`s and other non-literals work).
 
@@ -77,9 +79,10 @@ A `fn` that closes over a `let` binding is stored as a closure value instead.
 
 ## Limitations
 
-- **BEAM keeps two module versions.** A process spawned from an earlier
-  `repl_session` load is killed if that module is reloaded twice more. Put
-  long-lived actors in a real `src/` module.
+- Each successful entry is a new Erlang module (`repl_session_1`,
+  `repl_session_2`, …). Old modules stay in the code server for the session
+  (closures and processes keep working). Memory grows with session length;
+  unused generations are not purged yet.
 - Shadowed `entry_N` functions stay in the scratch file as dead code.
 - `const` cannot close over REPL values (compile-time).
 - No session history, git-worktree isolation, or syntax highlighting.

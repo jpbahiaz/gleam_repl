@@ -3,57 +3,50 @@ import gleam/package_interface.{type Package}
 import gleam/result
 import gleam/string
 import repl/codegen
-import repl/project.{join}
+import repl/project as host
 import repl/state.{type Project}
 import shellout
 import simplifile
 
-pub fn write_scratch(project: Project, source: String) -> Result(Nil, String) {
-  let dir = join(project.root, "src")
+pub fn write_scratch(
+  project: Project,
+  generation: Int,
+  source: String,
+) -> Result(Nil, String) {
+  let dir = host.join(project.root, "src")
+  let path = host.scratch_path(project, generation)
   use _ <- result.try(
     simplifile.create_directory_all(dir)
     |> result.map_error(fn(e) { "Could not create src/: " <> string.inspect(e) }),
   )
-  simplifile.write(to: project.scratch_path, contents: source)
+  simplifile.write(to: path, contents: source)
   |> result.map_error(fn(e) {
     "Could not write scratch module: " <> string.inspect(e)
   })
 }
 
-pub fn compile(project: Project, source: String) -> Result(Package, String) {
-  let previous = case simplifile.read(project.scratch_path) {
-    Ok(contents) -> Ok(contents)
-    Error(_) -> Error(Nil)
-  }
-  use _ <- result.try(write_scratch(project, source))
+pub fn compile(
+  project: Project,
+  generation: Int,
+  source: String,
+) -> Result(Package, String) {
+  let path = host.scratch_path(project, generation)
+  use _ <- result.try(write_scratch(project, generation, source))
   case
     run_gleam(project, ["build", "--target", "erlang", "--no-print-progress"])
   {
     Error(message) -> {
-      restore(project, previous)
-      Error(codegen.polish_compiler_error(message, project.scratch_path))
+      host.delete_scratch(project, generation)
+      Error(codegen.polish_compiler_error(message, path))
     }
     Ok(_) ->
       case export_interface(project) {
         Ok(package) -> Ok(package)
         Error(message) -> {
-          restore(project, previous)
-          Error(codegen.polish_compiler_error(message, project.scratch_path))
+          host.delete_scratch(project, generation)
+          Error(codegen.polish_compiler_error(message, path))
         }
       }
-  }
-}
-
-pub fn restore(project: Project, previous: Result(String, Nil)) -> Nil {
-  case previous {
-    Ok(contents) -> {
-      let _ = write_scratch(project, contents)
-      Nil
-    }
-    Error(_) -> {
-      let _ = simplifile.delete(project.scratch_path)
-      Nil
-    }
   }
 }
 

@@ -17,6 +17,15 @@ pub fn main() -> Nil {
   gleeunit.main()
 }
 
+pub fn module_name_test() {
+  assert state.module_name(1) == "repl_session_1"
+  assert state.module_name(12) == "repl_session_12"
+  assert state.is_scratch_module("repl_session_3")
+  assert state.is_scratch_filename("repl_session_3.gleam")
+  assert state.is_scratch_filename("repl_session.gleam")
+  assert !state.is_scratch_filename("repl.gleam")
+}
+
 pub fn classify_expression_test() {
   let assert Items([ValueItem(names: [], rhs: "1 + 2", ..)]) =
     classify.classify("1 + 2", classify.empty_env())
