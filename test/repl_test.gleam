@@ -9,6 +9,8 @@ import repl/classify.{
 }
 import repl/codegen
 import repl/command
+import repl/editor
+import repl/history
 import repl/hotload
 import repl/source
 import repl/state.{ImportSpec}
@@ -145,8 +147,65 @@ pub fn command_parse_test() {
   let assert Ok(command.Help) = command.parse(":help")
   let assert Ok(command.Reset) = command.parse(":reset")
   let assert Ok(command.TypeOf("x")) = command.parse(":type x")
+  let assert Ok(command.Bindings) = command.parse(":bindings")
+  let assert Ok(command.Bindings) = command.parse(":ls")
+  let assert Ok(command.History) = command.parse(":history")
   let assert Ok(command.Unknown("nope")) = command.parse(":nope")
   let assert Error(Nil) = command.parse("1 + 2")
+}
+
+pub fn history_skips_quit_and_duplicates_test() {
+  let entries = history.add([], "1 + 2")
+  let entries = history.add(entries, "1 + 2")
+  let entries = history.add(entries, ":quit")
+  let entries = history.add(entries, "")
+  let entries = history.add(entries, "let x = 1")
+  assert entries == ["1 + 2", "let x = 1"]
+}
+
+pub fn history_search_test() {
+  let entries = ["let x = 1", "fn double(n) { n * 2 }", "double(x)"]
+  let assert Ok(#("double(x)", 0)) = history.search(entries, "double", 0)
+  let assert Ok(#("fn double(n) { n * 2 }", 1)) =
+    history.search(entries, "double", 1)
+  let assert Error(Nil) = history.search(entries, "nope", 0)
+}
+
+pub fn editor_up_recalls_history_test() {
+  let ed = editor.new("> ", ["1 + 1", "2 + 2"])
+  let assert editor.Continue(ed) = editor.apply(ed, editor.Up)
+  assert ed.buffer == "2 + 2"
+  let assert editor.Continue(ed) = editor.apply(ed, editor.Up)
+  assert ed.buffer == "1 + 1"
+  let assert editor.Continue(ed) = editor.apply(ed, editor.Down)
+  assert ed.buffer == "2 + 2"
+}
+
+pub fn editor_ctrl_c_clears_line_test() {
+  let ed = editor.new("> ", [])
+  let assert editor.Continue(ed) = editor.apply(ed, editor.Char("x"))
+  let assert editor.Continue(ed) = editor.apply(ed, editor.CtrlC)
+  assert ed.buffer == ""
+}
+
+pub fn editor_ctrl_r_search_test() {
+  let ed = editor.new("> ", ["let x = 1", "let y = 2"])
+  let assert editor.Continue(ed) = editor.apply(ed, editor.CtrlR)
+  let assert editor.Continue(ed) = editor.apply(ed, editor.Char("y"))
+  assert ed.buffer == "let y = 2"
+  let assert editor.Submit("let y = 2", _) = editor.apply(ed, editor.Enter)
+}
+
+pub fn editor_ctrl_r_enter_submits_match_not_query_test() {
+  let ed = editor.new("> ", ["let a = 12"])
+  let assert editor.Continue(ed) = editor.apply(ed, editor.CtrlR)
+  let assert editor.Continue(ed) = editor.apply(ed, editor.Char("l"))
+  let assert editor.Continue(ed) = editor.apply(ed, editor.Char("e"))
+  let assert editor.Continue(ed) = editor.apply(ed, editor.Char("t"))
+  let assert editor.Continue(ed) = editor.apply(ed, editor.Char(" "))
+  let assert editor.Continue(ed) = editor.apply(ed, editor.Char("a"))
+  assert ed.buffer == "let a = 12"
+  let assert editor.Submit("let a = 12", _) = editor.apply(ed, editor.Enter)
 }
 
 pub fn codegen_simple_let_test() {

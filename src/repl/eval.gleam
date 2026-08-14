@@ -59,7 +59,8 @@ fn run_items(
               let state =
                 commit(state, plan, items, next_id, store, generation)
                 |> refresh_types(package, plan.calls)
-              let outcomes = make_outcomes(items, plan.calls, values, state)
+              let outcomes =
+                make_outcomes(items, plan.calls, values, state, package)
               #(state, Ok(outcomes))
             }
           }
@@ -141,6 +142,7 @@ fn make_outcomes(
   calls: List(Call),
   values: List(#(Call, Dynamic)),
   state: HarnessState,
+  package: Package,
 ) -> List(Outcome) {
   let import_outcomes =
     list.filter_map(items, fn(item) {
@@ -162,7 +164,8 @@ fn make_outcomes(
       let #(call, value) = pair
       case call_print(call) {
         False -> Error(Nil)
-        True -> Ok(Printed(string.inspect(value), type_for_call(state, call)))
+        True ->
+          Ok(Printed(string.inspect(value), type_for_call(state, call, package)))
       }
     })
   let _ = calls
@@ -183,10 +186,44 @@ fn call_bind_names(call: Call) -> List(String) {
   }
 }
 
-fn type_for_call(state: HarnessState, call: Call) -> String {
+fn type_for_call(state: HarnessState, call: Call, package: Package) -> String {
   case call_bind_names(call) {
     [name, ..] -> lookup_binding_type(state, name)
-    [] -> ""
+    [] ->
+      case call {
+        codegen.ApplyFn(entry_fn:, ..) ->
+          function_return_type(
+            package,
+            state.generation,
+            entry_fn,
+            state.imports,
+          )
+        codegen.Project(..) -> ""
+      }
+  }
+}
+
+fn function_return_type(
+  package: Package,
+  generation: Int,
+  entry_fn: String,
+  imports: List(ImportSpec),
+) -> String {
+  case dict.get(package.modules, state.module_name(generation)) {
+    Error(_) -> ""
+    Ok(module) ->
+      case dict.get(module.functions, entry_fn) {
+        Error(_) -> ""
+        Ok(function) -> {
+          let #(text, _) =
+            types.render(
+              function.return,
+              state.module_name(generation),
+              imports,
+            )
+          text
+        }
+      }
   }
 }
 

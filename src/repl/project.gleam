@@ -28,6 +28,10 @@ pub fn discover(root: String) -> Result(Project, String) {
   ))
 }
 
+pub fn history_path(project: Project) -> String {
+  join(project.root, "build/repl_history")
+}
+
 pub fn scratch_relpath(generation: Int) -> String {
   "src/" <> state.module_name(generation) <> ".gleam"
 }

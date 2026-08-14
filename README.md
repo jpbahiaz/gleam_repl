@@ -15,15 +15,18 @@ gleam run
 
 ```
 gleam repl  (Erlang target)
-Type Gleam at the prompt. :help for commands, :quit to exit.
+Up/Down history, Ctrl+R search, :help for commands.
 
 > let x = 5
 5
+: Int
 > let y = x + 10
 15
+: Int
 > fn double(n) { n * 2 }
 > double(y)
 30
+: Int
 > :type y
 y : Int
 ```
@@ -48,13 +51,18 @@ externals will fail that build.
 
 ## Commands
 
-| Command | Action |
+| Command / key | Action |
 |---|---|
 | `:quit`, `:q` | Exit |
 | `:help`, `:h` | Show commands |
-| `:type <name>` | Print the inferred type of a binding |
-| `:reset` | Wipe bindings and the scratch module |
-| Ctrl-D | Exit |
+| `:type <name>` | Type of a binding |
+| `:bindings`, `:ls` | List session names |
+| `:history` | Show input history |
+| `:reset` | Clear bindings (keeps history) |
+| Up / Down | History |
+| Ctrl+R | Reverse search |
+| Ctrl+C | Clear the line (does not exit) |
+| Ctrl+D | Exit on an empty line |
 
 Unfinished input (`fn foo() {`) continues on a `... ` prompt. Several statements
 pasted at once commit atomically — all land or none do.
@@ -87,7 +95,8 @@ A `fn` that closes over a `let` binding is stored as a closure value instead.
   unused generations are not purged yet.
 - Shadowed `entry_N` functions stay in the scratch file as dead code.
 - `const` cannot close over REPL values (compile-time).
-- No session history, git-worktree isolation, or syntax highlighting.
+- History is stored in `build/repl_history`.
+- No syntax highlighting, tab completion, or multi-line-aware editing.
 
 ## Development
 
