@@ -19,6 +19,7 @@ pub fn write_scratch(
     simplifile.create_directory_all(dir)
     |> result.map_error(fn(e) { "Could not create src/: " <> string.inspect(e) }),
   )
+  host.clear_scratch_files(project)
   simplifile.write(to: path, contents: source)
   |> result.map_error(fn(e) {
     "Could not write scratch module: " <> string.inspect(e)
@@ -29,7 +30,7 @@ pub fn compile(
   project: Project,
   generation: Int,
   source: String,
-) -> Result(Package, String) {
+) -> Result(#(Package, String), String) {
   let path = host.scratch_path(project, generation)
   use _ <- result.try(write_scratch(project, generation, source))
   case
@@ -39,9 +40,9 @@ pub fn compile(
       host.delete_scratch(project, generation)
       Error(codegen.polish_compiler_error(message, path))
     }
-    Ok(_) ->
+    Ok(output) ->
       case export_interface(project) {
-        Ok(package) -> Ok(package)
+        Ok(package) -> Ok(#(package, output))
         Error(message) -> {
           host.delete_scratch(project, generation)
           Error(codegen.polish_compiler_error(message, path))

@@ -16,8 +16,10 @@ import repl/state.{
   type BindingKind, type EvalError, type HarnessState, type ImportSpec,
   type Outcome, type Project, CompileError, Defined, Definition, HarnessState,
   Imported, Incomplete, NoOutcome, ParseError, Printed, RuntimeError, Value,
+  Warned,
 }
 import repl/types
+import repl/warnings
 
 pub fn eval_snippet(
   project: Project,
@@ -42,7 +44,7 @@ fn run_items(
   let #(plan, next_id) = codegen.generate(state, items)
   case compile.compile(project, generation, plan.source) {
     Error(message) -> #(state, Error(CompileError(message)))
-    Ok(package) ->
+    Ok(#(package, build_output)) ->
       case hotload.reload(project, generation) {
         Error(message) -> {
           host.delete_scratch(project, generation)
@@ -56,11 +58,23 @@ fn run_items(
             }
             Ok(#(store, values)) -> {
               host.delete_scratch(project, state.generation)
+              let path = host.scratch_path(project, generation)
+              let parsed = warnings.parse(build_output)
+              let shown =
+                warnings.select(parsed, plan.dirty, state.seen_warnings, path)
               let state =
                 commit(state, plan, items, next_id, store, generation)
                 |> refresh_types(package, plan.calls)
+              let state =
+                HarnessState(
+                  ..state,
+                  seen_warnings: warnings.fingerprints(parsed),
+                )
               let outcomes =
-                make_outcomes(items, plan.calls, values, state, package)
+                list.append(
+                  warning_outcomes(shown, path),
+                  make_outcomes(items, plan.calls, values, state, package),
+                )
               #(state, Ok(outcomes))
             }
           }
@@ -90,7 +104,17 @@ fn commit(
     imports: plan.imports,
     next_entry_id: next_id,
     generation:,
+    seen_warnings: state.seen_warnings,
   )
+}
+
+fn warning_outcomes(
+  shown: List(warnings.Warning),
+  scratch_path: String,
+) -> List(Outcome) {
+  list.map(shown, fn(warning) {
+    Warned(warnings.polish(warning.text, scratch_path))
+  })
 }
 
 fn apply_calls(

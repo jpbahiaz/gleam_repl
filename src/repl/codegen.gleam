@@ -31,23 +31,37 @@ pub type Plan {
     body: String,
     imports: List(ImportSpec),
     calls: List(Call),
+    dirty: List(#(Int, Int)),
   )
 }
 
 pub fn generate(state: HarnessState, items: List(Item)) -> #(Plan, Int) {
-  let #(body, calls, next_id) =
-    list.fold(items, #(state.body, [], state.next_entry_id), fn(acc, item) {
-      let #(body, calls, next_id) = acc
+  let #(body, calls, next_id, dirty_texts) =
+    list.fold(items, #(state.body, [], state.next_entry_id, []), fn(acc, item) {
+      let #(body, calls, next_id, dirty_texts) = acc
       case item {
-        ImportItem(_, _) -> #(body, calls, next_id)
+        ImportItem(_, _) -> #(body, calls, next_id, dirty_texts)
         DefinitionItem(name:, kind:, source:, captured_values:) ->
           case kind, captured_values {
             FnDef, [_, ..] as captured -> {
               let #(fn_src, calls2, next_id) =
                 closure_value(state, name, source, captured, next_id)
-              #(append_block(body, fn_src), list.append(calls, calls2), next_id)
+              #(
+                append_block(body, fn_src),
+                list.append(calls, calls2),
+                next_id,
+                list.append(dirty_texts, [fn_src]),
+              )
             }
-            _, _ -> #(replace_or_append_def(body, name, source), calls, next_id)
+            _, _ -> {
+              let block = def_block(name, source)
+              #(
+                replace_or_append_def(body, name, source),
+                calls,
+                next_id,
+                list.append(dirty_texts, [block]),
+              )
+            }
           }
         ValueItem(
           names:,
@@ -69,7 +83,12 @@ pub fn generate(state: HarnessState, items: List(Item)) -> #(Plan, Int) {
               params,
               next_id,
             )
-          #(append_block(body, fn_src), list.append(calls, calls2), next_id)
+          #(
+            append_block(body, fn_src),
+            list.append(calls, calls2),
+            next_id,
+            list.append(dirty_texts, [fn_src]),
+          )
         }
       }
     })
@@ -81,14 +100,20 @@ pub fn generate(state: HarnessState, items: List(Item)) -> #(Plan, Int) {
       }
     })
   let source = render(imports, body)
-  #(Plan(source:, body:, imports:, calls:), next_id)
+  let dirty_texts = case import_block(state.imports) == import_block(imports) {
+    True -> dirty_texts
+    False ->
+      case import_block(imports) {
+        "" -> dirty_texts
+        block -> [block, ..dirty_texts]
+      }
+  }
+  let dirty = line_ranges(source, dirty_texts)
+  #(Plan(source:, body:, imports:, calls:, dirty:), next_id)
 }
 
 pub fn render(imports: List(ImportSpec), body: String) -> String {
-  let import_block =
-    imports
-    |> list.map(render_import)
-    |> string.join("\n")
+  let import_block = import_block(imports)
   case import_block, string.trim(body) {
     "", "" -> state.empty_scratch
     "", _ -> state.empty_scratch <> "\n" <> string.trim(body) <> "\n"
@@ -100,6 +125,37 @@ pub fn render(imports: List(ImportSpec), body: String) -> String {
       <> "\n\n"
       <> string.trim(body)
       <> "\n"
+  }
+}
+
+fn import_block(imports: List(ImportSpec)) -> String {
+  imports
+  |> list.map(render_import)
+  |> string.join("\n")
+}
+
+fn line_ranges(source: String, needles: List(String)) -> List(#(Int, Int)) {
+  list.filter_map(needles, fn(needle) { find_range(source, needle) })
+}
+
+fn find_range(source: String, needle: String) -> Result(#(Int, Int), Nil) {
+  case needle {
+    "" -> Error(Nil)
+    _ ->
+      case string.split_once(source, needle) {
+        Error(_) -> Error(Nil)
+        Ok(#(before, _)) -> {
+          let start = newline_count(before) + 1
+          Ok(#(start, start + newline_count(needle)))
+        }
+      }
+  }
+}
+
+fn newline_count(src: String) -> Int {
+  case string.split(src, "\n") {
+    [] -> 0
+    parts -> list.length(parts) - 1
   }
 }
 
@@ -452,11 +508,62 @@ pub fn binding_updates(
 }
 
 pub fn polish_compiler_error(message: String, scratch_path: String) -> String {
-  let file = state.last_segment(scratch_path)
   message
   |> string.replace(scratch_path, "<repl>")
-  |> string.replace("src/" <> file, "<repl>")
-  |> string.replace(file, "<repl>")
-  |> string.replace("src/repl_session.gleam", "<repl>")
+  |> rewrite_scratch_paths
   |> string.replace("dev/repl.gleam", "<repl>")
+}
+
+fn rewrite_scratch_paths(text: String) -> String {
+  case string.split_once(text, state.scratch_prefix) {
+    Error(_) -> text
+    Ok(#(before, after)) ->
+      case consume_scratch_tail(after) {
+        Ok(rest) -> {
+          let #(kept, _) = split_off_path(before)
+          kept <> "<repl>" <> rewrite_scratch_paths(rest)
+        }
+        Error(_) ->
+          before <> state.scratch_prefix <> rewrite_scratch_paths(after)
+      }
+  }
+}
+
+fn consume_scratch_tail(after: String) -> Result(String, Nil) {
+  case string.split_once(after, ".gleam") {
+    Error(_) -> Error(Nil)
+    Ok(#(mid, rest)) ->
+      case string.contains(mid, "/") || string.contains(mid, "\\") {
+        True -> Error(Nil)
+        False -> Ok(rest)
+      }
+  }
+}
+
+fn split_off_path(before: String) -> #(String, String) {
+  take_trailing_path(list.reverse(string.to_graphemes(before)), [])
+}
+
+fn take_trailing_path(
+  reversed: List(String),
+  path: List(String),
+) -> #(String, String) {
+  case reversed {
+    [] -> #("", string.concat(path))
+    [g, ..rest] ->
+      case is_path_char(g) {
+        True -> take_trailing_path(rest, [g, ..path])
+        False -> #(
+          string.concat(list.reverse([g, ..rest])),
+          string.concat(path),
+        )
+      }
+  }
+}
+
+fn is_path_char(g: String) -> Bool {
+  case g {
+    "/" | "\\" | "." | "-" | "_" -> True
+    _ -> is_ident_char(g)
+  }
 }

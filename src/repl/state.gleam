@@ -40,6 +40,7 @@ pub type HarnessState {
     imports: List(ImportSpec),
     next_entry_id: Int,
     generation: Int,
+    seen_warnings: List(String),
   )
 }
 
@@ -47,6 +48,7 @@ pub type Outcome {
   Printed(text: String, gleam_type: String)
   Defined(name: String, gleam_type: String)
   Imported(module: String)
+  Warned(String)
   NoOutcome
 }
 
@@ -67,6 +69,7 @@ pub fn new_state() -> HarnessState {
     imports: [],
     next_entry_id: 1,
     generation: 0,
+    seen_warnings: [],
   )
 }
 

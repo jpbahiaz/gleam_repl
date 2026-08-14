@@ -11,7 +11,7 @@ import repl/source
 import repl/state.{
   type EvalError, type HarnessState, type Outcome, type Project, CompileError,
   Defined, Definition, Imported, Incomplete, NoOutcome, ParseError, Printed,
-  ProjectError, RuntimeError, Value,
+  ProjectError, RuntimeError, Value, Warned,
 }
 import repl/style
 
@@ -186,6 +186,7 @@ fn print_result(result: Result(List(Outcome), EvalError), color: Bool) -> Nil {
     Ok(outcomes) ->
       list.each(outcomes, fn(outcome) {
         case outcome {
+          Warned(text) -> io.println(style.warning(text, color))
           Printed(text, gleam_type) -> {
             io.println(style.value(text, color))
             case gleam_type {
