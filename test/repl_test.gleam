@@ -9,6 +9,7 @@ import repl/classify.{
 }
 import repl/codegen
 import repl/command
+import repl/hotload
 import repl/source
 import repl/state.{ImportSpec}
 import repl/types
@@ -24,6 +25,17 @@ pub fn module_name_test() {
   assert state.is_scratch_filename("repl_session_3.gleam")
   assert state.is_scratch_filename("repl_session.gleam")
   assert !state.is_scratch_filename("repl.gleam")
+}
+
+pub fn should_reload_host_modules_test() {
+  assert hotload.should_reload_beam("demo.beam")
+  assert hotload.should_reload_beam("demo@internal.beam")
+  assert !hotload.should_reload_beam("repl.beam")
+  assert !hotload.should_reload_beam("repl@eval.beam")
+  assert !hotload.should_reload_beam("repl@@main.beam")
+  assert !hotload.should_reload_beam("cultivation@@main.beam")
+  assert !hotload.should_reload_beam("repl_session_3.beam")
+  assert !hotload.should_reload_beam("README")
 }
 
 pub fn classify_expression_test() {

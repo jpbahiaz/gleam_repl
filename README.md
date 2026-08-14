@@ -68,8 +68,10 @@ pasted at once commit atomically — all land or none do.
 3. `gleam build` is the compile gate. Failure prints the compiler error and
    deletes the candidate; state is unchanged.
 4. `gleam export package-interface` supplies inferred types for later entries.
-5. `code:load_binary` loads that generation. Previous generations stay loaded
-   so earlier closures and processes keep working.
+5. `code:load_binary` loads that generation and any rebuilt host-package
+   modules (so edits to imported project code are picked up without restarting).
+   Previous scratch generations stay loaded so earlier closures and processes
+   keep working.
 6. Value entries are called once via `erlang:apply`. The result is cached as a
    live BEAM term (so `Pid`s and other non-literals work).
 

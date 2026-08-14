@@ -36,15 +36,12 @@ pub fn scratch_path(project: Project, generation: Int) -> String {
   join(project.root, scratch_relpath(generation))
 }
 
+pub fn ebin_dir(project: Project) -> String {
+  join(project.root, "build/dev/erlang/" <> project.name <> "/ebin")
+}
+
 pub fn beam_path(project: Project, generation: Int) -> String {
-  join(
-    project.root,
-    "build/dev/erlang/"
-      <> project.name
-      <> "/ebin/"
-      <> state.module_name(generation)
-      <> ".beam",
-  )
+  join(ebin_dir(project), state.module_name(generation) <> ".beam")
 }
 
 pub fn clear_scratch_files(project: Project) -> Nil {
