@@ -22,6 +22,7 @@ pub type Event {
   CtrlR
   CtrlC
   CtrlD
+  CtrlL
   Escape
 }
 
@@ -92,6 +93,7 @@ fn apply_edit(editor: Editor, event: Event) -> Step {
     CtrlU -> Continue(Editor(..editor, buffer: "", cursor: 0))
     CtrlK -> Continue(kill_to_end(editor))
     CtrlW -> Continue(kill_word(editor))
+    CtrlL -> Continue(editor)
     Char(ch) -> Continue(insert(editor, ch))
   }
 }

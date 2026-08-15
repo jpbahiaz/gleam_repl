@@ -40,16 +40,23 @@ fn raw_loop(ed: Editor, color: Bool) -> Input {
       Eof
     }
     Ok(event) ->
-      case editor.apply(ed, event) {
-        Continue(ed) -> raw_loop(ed, color)
-        Quit -> {
-          tty_write("\r\n")
-          Eof
+      case event {
+        editor.CtrlL -> {
+          tty_write("\u{001b}[H\u{001b}[2J")
+          raw_loop(ed, color)
         }
-        Submit(line, _) -> {
-          tty_write("\r\n")
-          Read(line)
-        }
+        _ ->
+          case editor.apply(ed, event) {
+            Continue(ed) -> raw_loop(ed, color)
+            Quit -> {
+              tty_write("\r\n")
+              Eof
+            }
+            Submit(line, _) -> {
+              tty_write("\r\n")
+              Read(line)
+            }
+          }
       }
   }
 }
@@ -73,6 +80,7 @@ fn next_event() -> Result(Event, Nil) {
     TtyEof -> Error(Nil)
     Byte(3) -> Ok(editor.CtrlC)
     Byte(4) -> Ok(editor.CtrlD)
+    Byte(12) -> Ok(editor.CtrlL)
     Byte(10) | Byte(13) -> Ok(editor.Enter)
     Byte(8) | Byte(127) -> Ok(editor.Backspace)
     Byte(1) -> Ok(editor.CtrlA)
