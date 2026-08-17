@@ -61,6 +61,7 @@ Keys:
   Ctrl+U / Ctrl+K    Kill to start / end
   Ctrl+W             Kill previous word
   Ctrl+C             Clear the line
+  Ctrl+L             Clear the screen
   Ctrl+D             Exit (empty line) or delete"
 
 pub fn type_of(name: String, gleam_type: String) -> String {

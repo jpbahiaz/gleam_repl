@@ -62,6 +62,7 @@ externals will fail that build.
 | Up / Down | History |
 | Ctrl+R | Reverse search |
 | Ctrl+C | Clear the line (does not exit) |
+| Ctrl+L | Clear the screen |
 | Ctrl+D | Exit on an empty line |
 
 Unfinished input (`fn foo() {`) continues on a `... ` prompt. Several statements
